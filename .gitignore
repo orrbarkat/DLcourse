@@ -1,0 +1,7 @@
+.idea/
+assignment1/*
+assignment2/*
+bin/
+env/*
+
+pip-selfcheck.json
