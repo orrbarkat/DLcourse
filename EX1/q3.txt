@@ -1,0 +1,2 @@
+[fc] Epoch 100/100  Train: 0.075660  Test: 0.167453
+[conv] Epoch 100/100  Train: 0.002682  Test: 0.069040

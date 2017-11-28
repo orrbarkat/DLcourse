@@ -55,17 +55,22 @@ def train(model, optimizer, data_loader):
     model.train()
 
     avg_loss = 0
+    avg_acc = 0
     for data, target in data_loader:
         data, target = Variable(data), Variable(target)
         optimizer.zero_grad()
         output = model(data)
         loss = F.cross_entropy(output, target, size_average=False)
+        acc = target.eq(output.max(-1)[1]).sum()
         loss.backward()
         optimizer.step()
+
         avg_loss += loss.data[0]
+        avg_acc += acc.data[0]
 
     avg_loss /= len(data_loader.dataset)
-    return avg_loss
+    avg_acc /= len(data_loader.dataset)
+    return avg_loss, avg_acc
 
 
 def main():
@@ -76,16 +81,26 @@ def main():
 
     model.train()
     train_losses = []
+    train_accs = []
     for epoch in range(1, args.epochs + 1):
-        train_losses.append(train(model, optimizer, data_loader))
+        loss, acc = train(model, optimizer, data_loader)
+        train_losses.append(loss)
+        train_accs.append(acc)
 
         if epoch % 10 == 0:
-            print('[Epoch {}/{}] Loss: {}'.format(
-                epoch, args.epochs, train_losses[-1]))
+            print('[Epoch {}/{}] Loss: {}  Accuracy: {}'.format(
+                epoch, args.epochs, train_losses[-1], train_accs[-1]))
 
     plt.plot(range(len(train_losses)), train_losses)
     plt.xlabel('# Epochs')
     plt.ylabel('Cross Entropy')
+    plt.title('Q2 Train Loss')
+
+    plt.figure()
+    plt.plot(range(len(train_accs)), train_accs)
+    plt.xlabel('# Epochs')
+    plt.ylabel('Cross Entropy')
+    plt.title('Q2 Train Accuracy')
     plt.show()
 
 

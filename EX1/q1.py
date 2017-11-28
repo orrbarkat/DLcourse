@@ -31,12 +31,13 @@ def main():
 
     model = XorNet()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    criterion = torch.nn.MSELoss()
 
     model.train()
     for i in range(1, args.epochs + 1):
         optimizer.zero_grad()
         output = model(x)
-        loss = F.mse_loss(output, y)
+        loss = criterion(output, y)
         loss.backward()
         optimizer.step()
 

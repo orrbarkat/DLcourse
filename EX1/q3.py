@@ -98,7 +98,7 @@ class FCNet(nn.Module):
         return x
 
 
-def train(model, optimizer, data_loader):
+def train(model, criterion, optimizer, data_loader):
     model.train()
 
     avg_loss = 0
@@ -108,7 +108,7 @@ def train(model, optimizer, data_loader):
         data, target = Variable(data), Variable(target)
         optimizer.zero_grad()
         output = model(data)
-        loss = F.mse_loss(output, target, size_average=False)
+        loss = criterion(output, target)
         loss.backward()
         optimizer.step()
         avg_loss += loss.data[0]
@@ -117,24 +117,40 @@ def train(model, optimizer, data_loader):
     return avg_loss
 
 
-def test(model, data_loader):
+def test(model, criterion, data_loader):
     model.eval()
     avg_loss = 0
     for data, target in data_loader:
         if args.cuda:
             data, target = data.cuda(), target.cuda()
-        data, target = Variable(data, volatile=True), Variable(target)
+        data, target = Variable(data, volatile=True), Variable(target, volatile=True)
         output = model(data)
-        avg_loss += F.mse_loss(output, target, size_average=False).data[0]
+        avg_loss += criterion(output, target).data[0]
 
     avg_loss /= len(data_loader.dataset)
     return avg_loss
 
 
-def main():
-    train_loader, test_loader = load_data()
+def plot_pred(model, image, keypoints):
+    model.eval()
+    input = Variable(torch.FloatTensor(image), volatile=True)
+    if args.cuda:
+        input = input.cuda()
+    output = model(input).data.cpu().numpy()
+    output = output.reshape(-1, 2)
+    output = (output + 1) * 48
 
-    if args.model == 'fc':
+    plt.figure()
+    plt.imshow(image.reshape(96, 96), cmap='gray')
+    plt.scatter(output[:, 0], output[:, 1], c='r', marker='x')
+
+    keypoints = (keypoints.reshape(-1, 2) + 1) * 48
+    plt.scatter(keypoints[:, 0], keypoints[:, 1], c='b', marker='x')
+    plt.legend(['pred', 'gt'])
+
+
+def train_test(model_name, train_loader, test_loader):
+    if model_name == 'fc':
         model = FCNet()
     else:
         model = ConvNet()
@@ -143,22 +159,36 @@ def main():
         model.cuda()
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    criterion = torch.nn.MSELoss(size_average=False)
 
     train_losses = []
     test_losses = []
+    print('Training {} model...'.format(model_name))
     for epoch in range(1, args.epochs + 1):
-        train_losses.append(train(model, optimizer, train_loader))
-        test_losses.append(test(model, test_loader))
+        train_losses.append(train(model, criterion, optimizer, train_loader))
+        test_losses.append(test(model, criterion, test_loader))
 
-        print('[Epoch {}/{}] Train: {}\tTest: {}'.format(
-            epoch, args.epochs, train_losses[-1], test_losses[-1]))
+        print('[{}] Epoch {}/{}  Train: {:.6f}  Test: {:.6f}'.format(
+            model_name, epoch, args.epochs, train_losses[-1], test_losses[-1]))
 
-    plt.plot(range(len(train_losses)), train_losses)
-    plt.plot(range(len(test_losses)), test_losses)
-    plt.legend(['Train loss', 'Test loss'])
+    return train_losses, test_losses
+
+
+def main():
+    train_loader, test_loader = load_data()
+
+    fc_train_losses, fc_test_losses = train_test('fc', train_loader, test_loader)
+    conv_train_losses, conv_test_losses = train_test('conv', train_loader, test_loader)
+
+    plt.figure()
+    plt.plot(range(len(fc_train_losses)), fc_train_losses,
+             range(len(fc_test_losses)), fc_test_losses,
+             range(len(conv_train_losses)), conv_train_losses,
+             range(len(conv_test_losses)), conv_test_losses)
+    plt.legend(['FC train loss', 'FC test loss',
+                'Conv train loss', 'Conv test loss'])
     plt.xlabel('# Epochs')
     plt.ylabel('MSE')
-    plt.title(args.model)
     plt.show()
 
 
@@ -167,9 +197,8 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--data-path', required=True)
-    parser.add_argument('--model', choices=['fc', 'conv'], help='Model to run', required=True)
     parser.add_argument('--batch-size', type=int, default=16)
-    parser.add_argument('--epochs', type=int, default=100)
+    parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--no-cuda', action='store_true')
     args = parser.parse_args()
