@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import os
+import random
 from collections import defaultdict
 
 import numpy as np
@@ -24,9 +25,25 @@ class Net12Dataset(Dataset):
 
     def __getitem__(self, idx):
         if idx < len(self.fg_data):
-            return self.fg_data[idx], 1
+            image, label = self.fg_data[idx], 1
         else:
-            return self.bg_data[idx - len(self.fg_data)], 0
+            image, label = self.bg_data[idx - len(self.fg_data)], 0
+
+        # random flip-lr
+        if random.random() < 0.5:
+            image = image[:, :, ::-1]
+
+        # random brightness
+        if random.random() < 0.5:
+            image += np.random.uniform(-0.3, 0.3)
+
+        if random.random() < 0.5:
+            mu = image.mean()
+            image = (image - mu) * np.random.uniform(0.8, 1.25) + mu
+
+        image = image.clip(0, 1)
+
+        return image, label
 
 
 class Net12(nn.Module):
