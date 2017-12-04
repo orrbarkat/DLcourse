@@ -13,11 +13,11 @@ from net12 import Net12
 from nms import non_max_suppression
 
 
-def run_detector(model, image, min_face_size=12):
+def run_detector(model, image, min_face_size=24):
     resize_factor = 12 / min_face_size
     image = scipy.misc.imresize(image, resize_factor)
-    pyramid_factor = 0.75
-    pyramid_size = 12
+    pyramid_factor = 0.8
+    pyramid_size = 100
     image_pyramid = [image]
     for i in range(pyramid_size - 1):
         if image_pyramid[-1].shape[0] > 16 and image_pyramid[-1].shape[1] > 16:
@@ -30,7 +30,7 @@ def run_detector(model, image, min_face_size=12):
         out = model(Variable(torch.Tensor(im), volatile=True).unsqueeze(0))
         out = softmax_2d(out)
         scores = out.data.numpy()[0, 1, ...]
-        ys, xs = np.where(scores > 0.5)
+        ys, xs = np.where(scores > 0.1)
         rect_size = min_face_size * (1/pyramid_factor) ** pyramid_i
 
         cur_rects = []
@@ -82,10 +82,12 @@ def main():
                     state = 'header'
 
     output_lines = []
+    n_rects = []
     for image_path in tqdm(file_list):
         image_path = os.path.join(fddb_root, image_path) + '.jpg'
         image = scipy.misc.imread(image_path, mode='RGB')
         rects = run_detector(net12, image)
+        n_rects.append(len(rects))
         output_lines.append(image_path[len(fddb_root):-len('.jpg')])
         output_lines.append(str(len(rects)))
         ellipses = []
@@ -113,6 +115,8 @@ def main():
         #     ax.add_patch(e)
         # # ax.add_patch()
         # plt.show()
+    # plt.hist(n_rects, 50)
+    # plt.show()
 
     with open('/home/ben/PycharmProjects/DLcourse/EX2/log/fold-01-out.txt', 'w') as f:
         f.write('\n'.join(output_lines))

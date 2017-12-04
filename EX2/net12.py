@@ -16,9 +16,10 @@ from torch.utils.data import Dataset
 
 
 class Net12Dataset(Dataset):
-    def __init__(self, fg_data, bg_data):
+    def __init__(self, fg_data, bg_data, test=False):
         self.fg_data = fg_data
         self.bg_data = bg_data
+        self.test = test
 
     def __len__(self):
         return len(self.fg_data) + len(self.bg_data)
@@ -29,19 +30,20 @@ class Net12Dataset(Dataset):
         else:
             image, label = self.bg_data[idx - len(self.fg_data)], 0
 
-        # random flip-lr
-        if random.random() < 0.5:
-            image = image[:, :, ::-1]
+        if not self.test:
+            # random flip-lr
+            if random.random() < 0.5:
+                image = image[:, :, ::-1]
 
-        # random brightness
-        if random.random() < 0.5:
-            image += np.random.uniform(-0.3, 0.3)
+            # random brightness
+            if random.random() < 0.5:
+                image += np.random.uniform(-0.3, 0.3)
 
-        if random.random() < 0.5:
-            mu = image.mean()
-            image = (image - mu) * np.random.uniform(0.8, 1.25) + mu
+            if random.random() < 0.5:
+                mu = image.mean()
+                image = (image - mu) * np.random.uniform(0.8, 1.25) + mu
 
-        image = image.clip(0, 1)
+            image = image.clip(0, 1)
 
         return image, label
 
@@ -64,7 +66,7 @@ class Net12(nn.Module):
         return x
 
     def loss(self, output, target):
-        return F.cross_entropy(output, target)
+        return F.cross_entropy(output, target, weight=torch.Tensor([1, 20]))
 
     def stats(self, output, target):
         fn = (target.eq(1).float() * output.max(-1)[1].eq(0).float()).sum()
@@ -155,7 +157,7 @@ def main():
         Net12Dataset(faces_data[:n_train_faces], bg_data[:n_train_bg]),
         batch_size=args.batch_size, shuffle=True, **kwargs)
     test_loader = torch.utils.data.DataLoader(
-        Net12Dataset(faces_data[n_train_faces:], bg_data[n_train_bg:]),
+        Net12Dataset(faces_data[n_train_faces:], bg_data[n_train_bg:], test=True),
         batch_size=args.batch_size, shuffle=True, **kwargs)
 
     train_writer = SummaryWriter(log_dir=os.path.join(args.log_dir, 'train'))
@@ -173,7 +175,6 @@ def main():
         test(model, test_loader, test_writer, epoch)
 
     torch.save(model.state_dict(), os.path.join(args.log_dir, 'model.checkpoint'))
-
 
 
 if __name__ == '__main__':
