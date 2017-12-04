@@ -5,8 +5,9 @@ from glob import glob
 import numpy as np
 import scipy.misc
 from tqdm import tqdm
-
-voc_root = '/home/ben/PycharmProjects/DLcourse/EX2/VOCdevkit/VOC2007/'
+project_root = dict(ben='/home/ben/PycharmProjects/DLcourse',
+                    orrbarkat='/Users/orrbarkat/repos/deep_learning')
+voc_root = os.path.join(project_root[os.getlogin()], 'VOCdevkit/VOC2007')
 person_images = set()
 
 with open(os.path.join(voc_root, 'ImageSets/Main/person_trainval.txt')) as f:
@@ -24,7 +25,7 @@ for im_path in tqdm(glob(os.path.join(voc_root, 'JPEGImages/*.jpg')), desc='Read
         for _ in range(5):
             background_images.append(scipy.misc.imresize(im, 0.5))
 
-n_crops = 200000
+n_crops = 300000
 crop_size = 12
 random_crops = np.empty([n_crops, 3, crop_size, crop_size], dtype=np.float32)
 for i in tqdm(range(n_crops), desc='Generating crops'):
@@ -35,4 +36,4 @@ for i in tqdm(range(n_crops), desc='Generating crops'):
     crop = image[crop_up:crop_up + crop_size, crop_left:crop_left + crop_size]
     random_crops[i] = np.array(crop).transpose(2, 0, 1).astype(np.float32) / 255
 
-np.savez_compressed('/home/ben/PycharmProjects/DLcourse/EX2/EX2_data/bg_12', bg_12=random_crops)
+np.savez_compressed(os.path.join(project_root[os.getlogin()], 'EX2/EX2_data/bg_12'), bg_12=random_crops)

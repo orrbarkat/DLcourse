@@ -2,25 +2,45 @@ import os
 
 import torch
 import numpy as np
-# import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 from torch.autograd import Variable
 import torch.nn as nn
 import scipy.misc
+# import scipy.ndimage
 from tqdm import tqdm
 
 from net12 import Net12
+from net24 import Net24
 from nms import non_max_suppression
 
 project_root = dict(ben='/home/ben/PycharmProjects/DLcourse',
                     orrbarkat='/Users/orrbarkat/repos/deep_learning')
 
+def verify_with_net24(net24, image, x, y, resize_factor):
+    y = int(y*resize_factor)
+    x = int(x*resize_factor)
+    crop = image[:, y:y+24, x:x+24]
+    # crop = scipy.ndimage.zoom(crop, (1., resize_factor, resize_factor), order=1)
+    pad_h = 24 - crop.shape[1]
+    pad_top = int(pad_h / 2)
+    pad_bot = pad_h - pad_top
+    pad_w = 24 - crop.shape[2]
+    pad_left = int(pad_w / 2)
+    pad_right = pad_w - pad_left
+    pad = np.pad(crop, [(0, 0), (pad_top, pad_bot), (pad_left, pad_right)], 'constant')
+    # pad = np.zeros((3,24,24))
+    # pad[:, :crop.shape[1], :crop.shape[2]] = crop
+    out = net24(Variable(torch.Tensor(pad), volatile=True).unsqueeze(0))
+    out = nn.Softmax2d()(out)
+    res = out.data.view(2)[1]
+    return res, crop
 
-def run_detector(model, image, min_face_size=24):
+def run_detector(net12, net24, image, min_face_size=12):
     resize_factor = 12 / min_face_size
+    base_image = image #.transpose(2, 0, 1).astype(np.float32) / 255.
     image = scipy.misc.imresize(image, resize_factor)
-    pyramid_factor = 0.8
-    pyramid_size = 100
+    pyramid_factor = 0.75
+    pyramid_size = 12
     image_pyramid = [image]
     for i in range(pyramid_size - 1):
         if image_pyramid[-1].shape[0] > 16 and image_pyramid[-1].shape[1] > 16:
@@ -30,25 +50,32 @@ def run_detector(model, image, min_face_size=24):
     rects = []
     for pyramid_i, im in enumerate(image_pyramid):
         im = im.transpose(2, 0, 1).astype(np.float32) / 255.
-        out = model(Variable(torch.Tensor(im), volatile=True).unsqueeze(0))
+        out = net12(Variable(torch.Tensor(im), volatile=True).unsqueeze(0))
         out = softmax_2d(out)
         scores = out.data.numpy()[0, 1, ...]
-        ys, xs = np.where(scores > 0.1)
+        ys, xs = np.where(scores > 0.5)
         rect_size = min_face_size * (1/pyramid_factor) ** pyramid_i
+        resize_factor_24 = 24/rect_size
+        image_24 = scipy.misc.imresize(base_image, resize_factor_24).transpose(2, 0, 1).astype(np.float32) / 255.
 
         cur_rects = []
         for y, x in zip(ys, xs):
             score = scores[y, x]
             y *= 2 * (1/pyramid_factor) ** pyramid_i / resize_factor
             x *= 2 * (1/pyramid_factor) ** pyramid_i / resize_factor
-            cur_rects.append([x,
+            score_24, data = verify_with_net24(net24, image_24, x, y, resize_factor_24)
+            # print('12net: {:.6f} 24net: {:.6f}'.format(score, score_24))
+            # if score > 0.7 and (score - score_24) > 0.5:
+            #     scipy.misc.toimage(data).show()
+            if score_24 > 0.5:
+                rects.append([x,
                               y,
                               x + rect_size,
                               y + rect_size,
-                              score])
-        rects.extend(non_max_suppression(np.array(cur_rects, np.float32), overlap_thresh=0.4))
-
-    return rects
+                              score_24])
+        # rects.extend(non_max_suppression(np.array(cur_rects, np.float32), overlap_thresh=0.5))
+    res = non_max_suppression(np.array(rects, np.float32), overlap_thresh=0.3)
+    return res
 
 
 def main():
@@ -57,6 +84,10 @@ def main():
     net12 = Net12()
     net12.load_state_dict(torch.load(os.path.join(project_root[os.getlogin()], 'EX2/log/model.checkpoint')))
     net12.eval()
+
+    net24 = Net24()
+    net24.load_state_dict(torch.load(os.path.join(project_root[os.getlogin()], 'EX2/log24/model24.checkpoint')))
+    net24.eval()
 
     with open(os.path.join(project_root[os.getlogin()], 'EX2/EX2_data/fddb/FDDB-folds/FDDB-fold-01.txt')) as f:
         file_list = f.read().split('\n')[:-1]
@@ -85,12 +116,11 @@ def main():
                     state = 'header'
 
     output_lines = []
-    n_rects = []
     for image_path in tqdm(file_list):
         image_path = os.path.join(fddb_root, image_path) + '.jpg'
+        # print("image: " + image_path)
         image = scipy.misc.imread(image_path, mode='RGB')
-        rects = run_detector(net12, image)
-        n_rects.append(len(rects))
+        rects = run_detector(net12, net24, image)
         output_lines.append(image_path[len(fddb_root):-len('.jpg')])
         output_lines.append(str(len(rects)))
         ellipses = []
@@ -110,18 +140,16 @@ def main():
             # output_lines.append('{} {} {} {} {}'.format(
             #     left_x, top_y, width, height, score))
 
-        # fix, ax = plt.subplots(1)
-        # ax.imshow(image)
-        # for e in ellipses:
-        #     ax.add_patch(e)
-        # for e in gt[image_path[len(fddb_root):-len('.jpg')]]:
-        #     ax.add_patch(e)
-        # # ax.add_patch()
-        # plt.show()
-    # plt.hist(n_rects, 50)
-    # plt.show()
+            # fix, ax = plt.subplots(1)
+            # ax.imshow(image)
+            # for e in ellipses:
+            #     ax.add_patch(e)
+            # for e in gt[image_path[len(fddb_root):-len('.jpg')]]:
+            #     ax.add_patch(e)
+            # # ax.add_patch()
+            # plt.show()
 
-    with open(os.path.join(project_root[os.getlogin()], 'EX2/log/fold-01-out.txt'), 'w') as f:
+    with open(os.path.join(project_root[os.getlogin()], 'EX2/log24/fold-01-out.txt'), 'w') as f:
         f.write('\n'.join(output_lines))
 
 
