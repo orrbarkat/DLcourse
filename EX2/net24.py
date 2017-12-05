@@ -16,10 +16,6 @@ from net12 import Net12Dataset, Net12
 project_root = dict(ben='/home/ben/PycharmProjects/DLcourse',
                     orrbarkat='/Users/orrbarkat/repos/deep_learning')
 
-class Net24Dataset(Net12Dataset):
-    def __init__(self, fg_data, bg_data):
-        super(Net24Dataset, self).__init__(fg_data, bg_data)
-
 
 
 class Net24(Net12):
@@ -33,24 +29,10 @@ class Net24(Net12):
             nn.ReLU(inplace=True),
             nn.Conv2d(128, 2, kernel_size=1)
         )
-        # self.conv1 = nn.Conv2d(3, 64, kernel_size=5)
-        # self.max1 = nn.MaxPool2d(kernel_size=3, stride=2)
-        # self.conv2 = nn.Conv2d(64, 128, kernel_size=9)
-        # self.conv3 = nn.Conv2d(128, 2, kernel_size=1)
 
     def forward(self, x):
         x = self.net24(x)
-        # x = self.conv1(x)
-        # x = self.max1(x)
-        # x = nn.ReLU(inplace=True)(x)
-        # x = self.conv2(x)
-        # x = nn.ReLU(inplace=True)(x)
-        # x = self.conv3(x)
         return x
-
-    def loss(self, output, target):
-        weights = torch.FloatTensor([1., 10.])
-        return F.cross_entropy(output, target, weight=weights)
 
 def to_variables(*tensors, cuda):
     variables = []
@@ -129,7 +111,7 @@ def main():
         Net12Dataset(faces_data[:n_train_faces], bg_data[:n_train_bg]),
         batch_size=args.batch_size, shuffle=True, **kwargs)
     test_loader = torch.utils.data.DataLoader(
-        Net12Dataset(faces_data[n_train_faces:], bg_data[n_train_bg:]),
+        Net12Dataset(faces_data[n_train_faces:], bg_data[n_train_bg:], test=True ),
         batch_size=args.batch_size, shuffle=True, **kwargs)
 
     train_writer = SummaryWriter(log_dir=os.path.join(args.log_dir, 'train'))

@@ -16,9 +16,9 @@ from nms import non_max_suppression
 project_root = dict(ben='/home/ben/PycharmProjects/DLcourse',
                     orrbarkat='/Users/orrbarkat/repos/deep_learning')
 
-def verify_with_net24(net24, image, x, y, resize_factor):
-    y = int(y*resize_factor)
-    x = int(x*resize_factor)
+def verify_with_net24(net24, image, rect, resize_factor):
+    y = int(rect[1]*resize_factor)
+    x = int(rect[0]*resize_factor)
     crop = image[:, y:y+24, x:x+24]
     # crop = scipy.ndimage.zoom(crop, (1., resize_factor, resize_factor), order=1)
     pad_h = 24 - crop.shape[1]
@@ -35,12 +35,12 @@ def verify_with_net24(net24, image, x, y, resize_factor):
     res = out.data.view(2)[1]
     return res, crop
 
-def run_detector(net12, net24, image, min_face_size=12):
+def run_detector(net12, net24, image, min_face_size=24):
     resize_factor = 12 / min_face_size
     base_image = image #.transpose(2, 0, 1).astype(np.float32) / 255.
     image = scipy.misc.imresize(image, resize_factor)
-    pyramid_factor = 0.75
-    pyramid_size = 12
+    pyramid_factor = 0.8
+    pyramid_size = 100
     image_pyramid = [image]
     for i in range(pyramid_size - 1):
         if image_pyramid[-1].shape[0] > 16 and image_pyramid[-1].shape[1] > 16:
@@ -53,7 +53,7 @@ def run_detector(net12, net24, image, min_face_size=12):
         out = net12(Variable(torch.Tensor(im), volatile=True).unsqueeze(0))
         out = softmax_2d(out)
         scores = out.data.numpy()[0, 1, ...]
-        ys, xs = np.where(scores > 0.5)
+        ys, xs = np.where(scores > 0.1)
         rect_size = min_face_size * (1/pyramid_factor) ** pyramid_i
         resize_factor_24 = 24/rect_size
         image_24 = scipy.misc.imresize(base_image, resize_factor_24).transpose(2, 0, 1).astype(np.float32) / 255.
@@ -63,19 +63,19 @@ def run_detector(net12, net24, image, min_face_size=12):
             score = scores[y, x]
             y *= 2 * (1/pyramid_factor) ** pyramid_i / resize_factor
             x *= 2 * (1/pyramid_factor) ** pyramid_i / resize_factor
-            score_24, data = verify_with_net24(net24, image_24, x, y, resize_factor_24)
-            # print('12net: {:.6f} 24net: {:.6f}'.format(score, score_24))
-            # if score > 0.7 and (score - score_24) > 0.5:
-            #     scipy.misc.toimage(data).show()
-            if score_24 > 0.5:
-                rects.append([x,
+            cur_rects.append([x,
                               y,
                               x + rect_size,
                               y + rect_size,
-                              score_24])
-        # rects.extend(non_max_suppression(np.array(cur_rects, np.float32), overlap_thresh=0.5))
-    res = non_max_suppression(np.array(rects, np.float32), overlap_thresh=0.3)
-    return res
+                              score])
+        cur_rects = non_max_suppression(np.array(cur_rects, np.float32), overlap_thresh=0.4)
+        for rect in cur_rects:
+            score_24, data = verify_with_net24(net24, image_24, rect, resize_factor_24)
+            if score_24 > 0.25:
+                rect[4] = score_24
+                rects.append(rect)
+    res = non_max_suppression(np.array(rects, np.float32), overlap_thresh=0.8)
+    return rects
 
 
 def main():
