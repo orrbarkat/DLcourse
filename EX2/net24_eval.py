@@ -71,10 +71,10 @@ def run_detector(net12, net24, image, min_face_size=24):
         cur_rects = non_max_suppression(np.array(cur_rects, np.float32), overlap_thresh=0.4)
         for rect in cur_rects:
             score_24, data = verify_with_net24(net24, image_24, rect, resize_factor_24)
-            if score_24 > 0.35:
+            if score_24 > 0.5:
                 rect[4] = score_24
                 rects.append(rect)
-    res = non_max_suppression(np.array(rects, np.float32), overlap_thresh=0.7)
+    res = non_max_suppression(np.array(rects, np.float32), overlap_thresh=0.67)
     return rects
 
 
