@@ -9,10 +9,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import torchfile
 from tensorboardX import SummaryWriter
-from torch.autograd import Variable
 from torch.utils.data import Dataset
+
+from utils import to_variables
 
 
 class Net12Dataset(Dataset):
@@ -61,36 +61,64 @@ class Net12(nn.Module):
             nn.Conv2d(16, 2, kernel_size=1)
         )
 
+        self.loss_weight = torch.Tensor([1, 20])
+
     def forward(self, x):
         x = self.net(x)
         return x
 
     def loss(self, output, target):
-        return F.cross_entropy(output, target, weight=torch.Tensor([1, 20]))
+        return F.cross_entropy(output, target, weight=self.loss_weight)
 
-    def stats(self, output, target):
-        fn = (target.eq(1).float() * output.max(-1)[1].eq(0).float()).sum()
-        p = target.eq(1).float().sum()
-        fnr = fn / p.clamp(min=1)
-
-        fp = (target.eq(0).float() * output.max(-1)[1].eq(1).float()).sum()
-        n = target.eq(0).float().sum()
-        fpr = fp / n.clamp(min=1)
-
-        tp = (target.eq(1).float() * output.max(-1)[1].eq(1).float()).sum()
-        recall = tp / p.clamp(min=1)
-
-        return dict(fnr=fnr, fpr=fpr, recall=recall)
+    def cuda(self, device=None):
+        super(Net12, self).cuda(device)
+        self.loss_weight = self.loss_weight.cuda()
+        return self
 
 
-def to_variables(*tensors, cuda):
-    variables = []
-    for t in tensors:
-        if cuda:
-            t = t.cuda()
-        variables.append(Variable(t))
+class Net24(nn.Module):
+    def __init__(self):
+        super(Net24, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=5),  # 20x20
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),  # 10, 10
+            nn.ReLU(inplace=True)
+        )
 
-    return variables
+        self.fc1 = nn.Linear(64*10*10, 128)
+        self.fc2 = nn.Linear(128, 2)
+
+        self.loss_weight = torch.Tensor([1, 20])
+
+    def forward(self, x):
+        x = self.features(x)
+        x = x.view(x.size(0), 64*10*10)
+        x = F.relu(self.fc1(x), inplace=True)
+        x = self.fc2(x)
+        return x
+
+    def loss(self, output, target):
+        return F.cross_entropy(output, target, weight=self.loss_weight)
+
+    def cuda(self, device=None):
+        super(Net24, self).cuda(device)
+        self.loss_weight = self.loss_weight.cuda()
+        return self
+
+
+def calc_stats(output, target):
+    fn = (target.eq(1).float() * output.max(-1)[1].eq(0).float()).sum()
+    p = target.eq(1).float().sum()
+    fnr = fn / p.clamp(min=1)
+
+    fp = (target.eq(0).float() * output.max(-1)[1].eq(1).float()).sum()
+    n = target.eq(0).float().sum()
+    fpr = fp / n.clamp(min=1)
+
+    tp = (target.eq(1).float() * output.max(-1)[1].eq(1).float()).sum()
+    recall = tp / p.clamp(min=1)
+
+    return dict(fnr=fnr, fpr=fpr, recall=recall)
 
 
 def train(model, optimizer, data_loader, summary_writer, epoch):
@@ -103,7 +131,7 @@ def train(model, optimizer, data_loader, summary_writer, epoch):
 
         y_ = model(x).view(-1, 2)
         loss = model.loss(y_, y)
-        stats = model.stats(y_, y)
+        stats = calc_stats(y_, y)
 
         loss.backward()
         optimizer.step()
@@ -130,7 +158,7 @@ def test(model, data_loader, summary_writer, epoch):
 
         y_ = model(x).view(-1, 2)
         loss = model.loss(y_, y)
-        stats = model.stats(y_, y)
+        stats = calc_stats(y_, y)
 
         avg_stats['loss'] += loss.data[0]
         for k, v in stats.items():
@@ -146,11 +174,8 @@ def test(model, data_loader, summary_writer, epoch):
 
 
 def main():
-    faces_data_ = torchfile.load(args.faces_data_path)
-    faces_data = np.empty([len(faces_data_), 3, 12, 12], dtype='float32')
-    for i, im in enumerate(faces_data_.values()):
-        faces_data[i] = im
-    bg_data = np.load(args.background_data_path)['bg_12']
+    faces_data = np.load(args.faces_data_path)['data']
+    bg_data = np.load(args.background_data_path)['data']
 
     n_train_faces = int(len(faces_data) * 0.9)
     n_train_bg = int(len(bg_data) * 0.9)
@@ -166,7 +191,10 @@ def main():
     train_writer = SummaryWriter(log_dir=os.path.join(args.log_dir, 'train'))
     test_writer = SummaryWriter(log_dir=os.path.join(args.log_dir, 'test'))
 
-    model = Net12()
+    if args.model == '12net':
+        model = Net12()
+    else:
+        model = Net24()
 
     if args.cuda:
         model.cuda()
@@ -187,6 +215,7 @@ if __name__ == '__main__':
     parser.add_argument('--faces-data-path', required=True)
     parser.add_argument('--background-data-path', required=True)
     parser.add_argument('--log-dir', required=True)
+    parser.add_argument('--model', choices=['12net', '24net'], required=True)
     parser.add_argument('--batch-size', type=int, default=64)
     parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--lr', type=float, default=0.001)

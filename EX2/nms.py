@@ -4,7 +4,7 @@ import numpy as np
 def non_max_suppression(boxes, overlap_thresh):
     # if there are no boxes, return an empty list
     if len(boxes) == 0:
-        return []
+        return boxes
 
     # initialize the list of picked indexes
     pick = []
