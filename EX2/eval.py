@@ -14,7 +14,7 @@ from train import Net12, Net24
 from utils import run_detector_pyramid, read_gt
 
 
-def filter_rects_with_24net(net24, image, rects):
+def filter_rects_with_24net(net24, image, rects, threshold):
     softmax = torch.nn.Softmax()
 
     filtered_rects = []
@@ -30,7 +30,7 @@ def filter_rects_with_24net(net24, image, rects):
         out = softmax(out)
         score = out.data.cpu().numpy()[0, 1]
 
-        if score > 0.1:
+        if score > threshold:
             filtered_rects.append((x1, y1, x2, y2, score))
 
     return np.array(filtered_rects).reshape(-1, 5)
@@ -62,11 +62,11 @@ def main():
     n_rects = []
     for image_path in tqdm(file_list):
         image = scipy.misc.imread(os.path.join(args.fddb_dir, 'images', image_path) + '.jpg', mode='RGB')
-        rects = run_detector_pyramid(net12, image, 12, min_face_size=24, threshold=0.05)
+        rects = run_detector_pyramid(net12, image, 12, min_face_size=24, threshold=0.05, pyramid_factor=0.8)
 
         if args.net24_checkpoint:
-            rects = filter_rects_with_24net(net24, image, rects)
-            rects = non_max_suppression(rects, overlap_thresh=0.4)
+            rects = filter_rects_with_24net(net24, image, rects, threshold=0.05)
+            rects = non_max_suppression(rects, overlap_thresh=0.7)
 
         n_rects.append(len(rects))
         output_lines.append(image_path)
@@ -89,9 +89,13 @@ def main():
             for e in ellipses:
                 ax.add_patch(e)
             for center_x, center_y, major_axis_radius, minor_axis_radius, angle in gt[image_path]:
-                e = Ellipse([center_x, center_y], major_axis_radius * 2, minor_axis_radius * 2, angle,
-                            fc='none', lw=3, ec='r')
-                ax.add_patch(e)
+                ax.add_patch(Ellipse([center_x, center_y],
+                                     major_axis_radius * 2,
+                                     minor_axis_radius * 2,
+                                     angle,
+                                     fc='none',
+                                     lw=3,
+                                     ec='r'))
             plt.show()
 
     print('falses per image: ', sum(n_rects) / len(n_rects))
