@@ -62,7 +62,7 @@ def main():
     n_rects = []
     for image_path in tqdm(file_list):
         image = scipy.misc.imread(os.path.join(args.fddb_dir, 'images', image_path) + '.jpg', mode='RGB')
-        rects = run_detector_pyramid(net12, image, 12, min_face_size=24, threshold=0.05, pyramid_factor=0.8)
+        rects = run_detector_pyramid(net12, image, 12, min_face_size=24, threshold=0.05, pyramid_factor=0.8, cuda=args.cuda)
 
         if args.net24_checkpoint:
             rects = filter_rects_with_24net(net24, image, rects, threshold=0.05)
