@@ -14,3 +14,6 @@ EX2/__MACOSX
 EX2/EX2_data
 EX2/log*
 VOCdevkit
+
+EX3/log
+EX3/*.t7
