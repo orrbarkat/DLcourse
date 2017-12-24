@@ -18,12 +18,15 @@ def main():
     for i in range(args.length):
         x = Variable(data, volatile=True)
         y_, state = model(x, state)
-        # char_weights = y_.squeeze().data.div(args.temperature).exp().cpu()
-        label = y_[:,-1,:].squeeze().max(0)[1].data[0]
-        data[0,:-1] = data[0,1:]
-        data[0,-1] = label
+        char_weights = y_[:,-1,:].squeeze().data.div(args.temperature).exp()
+        label = torch.multinomial(char_weights, 1)[0]
+        # label = y_[:,-1,:].squeeze().max(0)[1].data[0]
+        size = min(data.size(1)+1, 100)
+        new_data = torch.zeros(1,size)
+        new_data[0,:-1] = data[0, 1:] if data.size(1) >= 100 else data[0, :]
+        new_data[0, -1] = label
+        data = new_data.long()
         last_char = idx2char[label].decode('utf8')
-        # print(last_char)
         output.append(last_char)
     output = ''.join(output)
     with open(args.output, 'wb') as f:
@@ -40,6 +43,7 @@ if __name__ == '__main__':
     parser.add_argument('--output', required=True)
     parser.add_argument('--model', required=True)
     parser.add_argument('--length', type=int, default=500)
+    parser.add_argument('--temperature', type=float, default=0.8)
     args = parser.parse_args()
 
     main()
